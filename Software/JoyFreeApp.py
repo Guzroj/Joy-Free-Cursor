@@ -17,6 +17,7 @@ UUID_ANGULO = "8f3c0002-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 UUID_ZONA = "8f3c0003-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 UUID_SENS = "8f3c0004-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 UUID_MODO = "8f3c0005-5b7a-4e2d-9c1a-0d4f6a2b7e10"
+UUID_ESTADO = "8f3c0006-5b7a-4e2d-9c1a-0d4f6a2b7e10"   # 1 = mouse emparejado en el sistema
 DEF_ZONA = 50      # 5.0° (décimas de grado)
 DEF_SENS = 100     # 100 %
 ANGULO_MAX = 25.0
@@ -136,6 +137,8 @@ class Ventana(QWidget):
         self.setMinimumSize(860, 520)
         self.setStyleSheet(ESTILO)
         self.cliente = None          # conexión BLE activa (None si no hay)
+        self.conectado_ble = False   # la app ya habla con el ESP32
+        self.emparejado = False      # el sistema operativo ya emparejó el mouse
         self.en_config = False
         self._tareas = set()
         self.latido = QTimer(self)   # mientras se configura, avisa al ESP32 cada 1 s
@@ -167,7 +170,7 @@ class Ventana(QWidget):
         if grande:
             tl.addWidget(grande, alignment=Qt.AlignCenter)
             tl.addSpacing(18)
-        msg = QLabel("Bienvenido,\npor favor conectar\nel Joy-Free Cursor")
+        self.msg = msg = QLabel("Bienvenido,\npor favor conectar\nel Joy-Free Cursor")
         msg.setObjectName("bienvenida")
         msg.setAlignment(Qt.AlignCenter)
         tl.addWidget(msg)
@@ -315,15 +318,31 @@ class Ventana(QWidget):
     # ---------- acciones ----------
     def animar_busqueda(self):
         self.puntos = (self.puntos + 1) % 4
-        self.lbl_busca.setText("Buscando dispositivo" + "." * self.puntos)
+        base = "Esperando emparejamiento" if self.conectado_ble else "Buscando dispositivo"
+        self.lbl_busca.setText(base + "." * self.puntos)
 
     def mostrar(self, conectado):
+        """Estado de la conexión BLE con el ESP32 (no implica que esté emparejado)."""
+        self.conectado_ble = conectado
         if not conectado:
             self.cliente = None
-            if self.en_config:               # se cayó la conexión: salir del modo
-                self.en_config = False
-                self.aplicar_modo(enviar=False)
-        self.pila.setCurrentIndex(1 if conectado else 0)
+            self.emparejado = False
+        self.refrescar_pantalla()
+
+    def poner_emparejado(self, valor):
+        self.emparejado = valor
+        self.refrescar_pantalla()
+
+    def refrescar_pantalla(self):
+        listo = self.conectado_ble and self.emparejado
+        if not listo and self.en_config:     # salir del modo configuración
+            self.en_config = False
+            self.aplicar_modo(enviar=False)
+        if self.conectado_ble and not self.emparejado:
+            self.msg.setText("Dispositivo encontrado,\nfalta emparejarlo en el\nBluetooth de Windows")
+        else:
+            self.msg.setText("Bienvenido,\npor favor conectar\nel Joy-Free Cursor")
+        self.pila.setCurrentIndex(1 if listo else 0)
 
     def actualizar_angulo(self, grados):
         self.medidor.set_valor(grados)
@@ -419,7 +438,10 @@ async def ciclo_ble(ventana):
                 sens = struct.unpack("<H", await c.read_gatt_char(UUID_SENS))[0]
                 ventana.poner_valores(zona, sens)
                 ventana.cliente = c
+                estado = (await c.read_gatt_char(UUID_ESTADO))[0] == 1
+                ventana.poner_emparejado(estado)
                 ventana.mostrar(True)
+                await c.start_notify(UUID_ESTADO, lambda _, d: ventana.poner_emparejado(d[0] == 1))
                 await c.start_notify(UUID_ANGULO, al_recibir)
                 await desconectado.wait()
         except Exception as e:

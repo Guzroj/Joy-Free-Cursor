@@ -7,6 +7,7 @@
 #define UUID_ZONA     "8f3c0003-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 #define UUID_SENS     "8f3c0004-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 #define UUID_MODO     "8f3c0005-5b7a-4e2d-9c1a-0d4f6a2b7e10"
+#define UUID_ESTADO   "8f3c0006-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 
 // ---- Parámetros ajustables ----
 float       zonaMuerta   = 5.0;   // la app puede cambiarla
@@ -29,6 +30,7 @@ NimBLECharacteristic* chAngulo = nullptr;
 NimBLECharacteristic* chZona = nullptr;
 NimBLECharacteristic* chSens = nullptr;
 NimBLECharacteristic* chModo = nullptr;
+NimBLECharacteristic* chEstado = nullptr;
 
 float centro = 0, acumulador = 0;
 unsigned long ultimo = 0;
@@ -39,6 +41,9 @@ unsigned long blancoHasta = 0;
 // Si pasan 3 s sin latido (app cerrada o conexión caída), sale solo.
 bool modoConfig = false;
 unsigned long ultimoLatido = 0;
+
+// Estado de emparejamiento que se le informa a la app (1 = mouse emparejado)
+bool pareadoAnterior = false;
 
 class CbZona : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& info) override {
@@ -94,6 +99,18 @@ void actualizarLed() {
   }
 }
 
+// Avisa a la app cuando el mouse se empareja o se desempareja
+void actualizarEstado() {
+  bool p = mouse.isPaired();
+  if (chEstado && p != pareadoAnterior) {
+    pareadoAnterior = p;
+    uint8_t e = p ? 1 : 0;
+    chEstado->setValue(e);
+    chEstado->notify();
+    Serial.println(p ? "Mouse emparejado" : "Mouse desemparejado");
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   ledcAttach(LED_R, 5000, 8); ledcAttach(LED_G, 5000, 8); ledcAttach(LED_B, 5000, 8);
@@ -133,6 +150,10 @@ void setup() {
     chModo->setValue(m0);
     chModo->setCallbacks(new CbModo());
 
+    chEstado = svc->createCharacteristic(UUID_ESTADO, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+    uint8_t e0 = 0;
+    chEstado->setValue(e0);
+
     bool ok = servidor->start();
     Serial.print("servidor->start(): "); Serial.println(ok ? "OK" : "FALLO");
     NimBLEDevice::getAdvertising()->start();
@@ -155,6 +176,7 @@ void loop() {
   }
 
   actualizarLed();
+  actualizarEstado();
   mpu.update();
 
   if (digitalRead(PIN_RECENTRAR) == LOW) {
