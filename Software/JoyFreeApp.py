@@ -2,11 +2,12 @@ import asyncio
 import math
 import struct
 import sys
+from pathlib import Path
 
 import qasync
 from bleak import BleakClient
 from PySide6.QtCore import Qt, QRectF, QTimer
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                                QPushButton, QSlider, QStackedWidget,
                                QVBoxLayout, QWidget)
@@ -19,6 +20,7 @@ UUID_MODO = "8f3c0005-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 DEF_ZONA = 50      # 5.0° (décimas de grado)
 DEF_SENS = 100     # 100 %
 ANGULO_MAX = 25.0
+LOGO = Path(__file__).parent / "logo.png"   # debe estar junto a este archivo
 
 AZUL = "#2F6BFF"
 VERDE = "#14804A"
@@ -50,6 +52,16 @@ QPushButton:disabled { background: #DCE1E9; color: #9AA6B8; }
 QPushButton#secundario { background: white; color: #2F6BFF; border: 2px solid #2F6BFF; }
 QPushButton#secundario:disabled { background: #F3F6FB; color: #9AA6B8; border: 2px solid #DCE1E9; }
 """
+
+
+def logo_label(tam):
+    """QLabel con el logo escalado a tam×tam px, o None si falta logo.png."""
+    if not LOGO.exists():
+        return None
+    lbl = QLabel()
+    lbl.setPixmap(QPixmap(str(LOGO)).scaled(tam, tam, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+    lbl.setFixedSize(tam, tam)
+    return lbl
 
 
 def tarjeta():
@@ -118,6 +130,8 @@ class Ventana(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Joy-Free Cursor")
+        if LOGO.exists():
+            self.setWindowIcon(QIcon(str(LOGO)))
         self.resize(1000, 600)
         self.setMinimumSize(860, 520)
         self.setStyleSheet(ESTILO)
@@ -149,6 +163,10 @@ class Ventana(QWidget):
         tl = QVBoxLayout(t)
         tl.setContentsMargins(30, 60, 30, 60)
         tl.addStretch()
+        grande = logo_label(130)
+        if grande:
+            tl.addWidget(grande, alignment=Qt.AlignCenter)
+            tl.addSpacing(18)
         msg = QLabel("Bienvenido,\npor favor conectar\nel Joy-Free Cursor")
         msg.setObjectName("bienvenida")
         msg.setAlignment(Qt.AlignCenter)
@@ -175,6 +193,10 @@ class Ventana(QWidget):
         self.chip.setObjectName("chip")
         self.chip.setMinimumWidth(140)
         self.chip.setAlignment(Qt.AlignCenter)
+        pequeno = logo_label(44)
+        if pequeno:
+            cab.addWidget(pequeno)
+            cab.addSpacing(6)
         cab.addWidget(titulo)
         cab.addStretch()
         cab.addWidget(self.chip)
@@ -407,7 +429,12 @@ async def ciclo_ble(ventana):
 
 
 def main():
+    if sys.platform == "win32":      # para que la barra de tareas use el logo y no el de Python
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("tec.joyfreecursor.app")
     app = QApplication(sys.argv)
+    if LOGO.exists():
+        app.setWindowIcon(QIcon(str(LOGO)))
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
     cierre = asyncio.Event()
