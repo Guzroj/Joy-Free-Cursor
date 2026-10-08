@@ -6,6 +6,7 @@
 #define UUID_ANGULO   "8f3c0002-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 #define UUID_ZONA     "8f3c0003-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 #define UUID_SENS     "8f3c0004-5b7a-4e2d-9c1a-0d4f6a2b7e10"
+#define UUID_MODO     "8f3c0005-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 
 // ---- Parámetros ajustables ----
 float       zonaMuerta   = 5.0;   // la app puede cambiarla
@@ -27,11 +28,17 @@ HijelBLEMouse mouse("Joy-Free Cursor", "TEC");
 NimBLECharacteristic* chAngulo = nullptr;
 NimBLECharacteristic* chZona = nullptr;
 NimBLECharacteristic* chSens = nullptr;
+NimBLECharacteristic* chModo = nullptr;
 
 float centro = 0, acumulador = 0;
 unsigned long ultimo = 0;
 int ciclos = 0;
 unsigned long blancoHasta = 0;
+
+// Modo configuración: la app lo activa y manda un "latido" cada 1 s.
+// Si pasan 3 s sin latido (app cerrada o conexión caída), sale solo.
+bool modoConfig = false;
+unsigned long ultimoLatido = 0;
 
 class CbZona : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& info) override {
@@ -57,6 +64,17 @@ class CbSens : public NimBLECharacteristicCallbacks {
   }
 };
 
+class CbModo : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& info) override {
+    if (c->getValue().size() >= 1) {
+      bool nuevo = (c->getValue().getValue<uint8_t>() == 1);
+      if (nuevo != modoConfig) Serial.println(nuevo ? "Modo configuracion: ON" : "Modo configuracion: OFF");
+      modoConfig = nuevo;
+      ultimoLatido = millis();
+    }
+  }
+};
+
 void ledColor(uint8_t r, uint8_t g, uint8_t b) {
   static int pr = -1, pg = -1, pb = -1;
   if (r == pr && g == pg && b == pb) return;
@@ -67,7 +85,7 @@ void ledColor(uint8_t r, uint8_t g, uint8_t b) {
 
 void actualizarLed() {
   unsigned long t = millis();
-  if (t < blancoHasta) {
+  if (modoConfig || t < blancoHasta) {          // configurando o recentrando: blanco parpadeando
     if ((t / 150) % 2 == 0) ledColor(255, 255, 255); else ledColor(0, 0, 0);
   } else if (mouse.isPaired()) {
     ledColor(0, 255, 0);
@@ -110,6 +128,11 @@ void setup() {
     chSens->setValue(s0);
     chSens->setCallbacks(new CbSens());
 
+    chModo = svc->createCharacteristic(UUID_MODO, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE);
+    uint8_t m0 = 0;
+    chModo->setValue(m0);
+    chModo->setCallbacks(new CbModo());
+
     bool ok = servidor->start();
     Serial.print("servidor->start(): "); Serial.println(ok ? "OK" : "FALLO");
     NimBLEDevice::getAdvertising()->start();
@@ -124,6 +147,11 @@ void loop() {
     NimBLEServer* s = NimBLEDevice::getServer();
     NimBLEAdvertising* a = NimBLEDevice::getAdvertising();
     if (s && !a->isAdvertising() && s->getConnectedCount() < 2) a->start();
+  }
+
+  if (modoConfig && millis() - ultimoLatido > 3000) {
+    modoConfig = false;
+    Serial.println("Modo configuracion: OFF (sin latido de la app)");
   }
 
   actualizarLed();
