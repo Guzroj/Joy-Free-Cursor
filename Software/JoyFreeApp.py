@@ -6,7 +6,7 @@ from pathlib import Path
 
 import qasync
 from bleak import BleakClient
-from PySide6.QtCore import Qt, QRectF, QTimer
+from PySide6.QtCore import Qt, QPointF, QRectF, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                                QPushButton, QSlider, QStackedWidget,
@@ -18,9 +18,13 @@ UUID_ZONA = "8f3c0003-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 UUID_SENS = "8f3c0004-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 UUID_MODO = "8f3c0005-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 UUID_ESTADO = "8f3c0006-5b7a-4e2d-9c1a-0d4f6a2b7e10"   # 1 = mouse emparejado en el sistema
+UUID_EJES = "8f3c0007-5b7a-4e2d-9c1a-0d4f6a2b7e10"     # bit0 = dos ejes activos, bit1 = hombro detectado
+UUID_ANGULO_Y = "8f3c0008-5b7a-4e2d-9c1a-0d4f6a2b7e10" # ángulo del hombro (centésimas de grado)
 DEF_ZONA = 50      # 5.0° (décimas de grado)
 DEF_SENS = 100     # 100 %
 ANGULO_MAX = 25.0
+ZONA_Y = 8.0       # debe coincidir con ZONA_MUERTA_Y del firmware
+MAX_Y = 40.0       # debe coincidir con ANGULO_MAX_Y del firmware
 LOGO = Path(__file__).parent / "logo.png"   # debe estar junto a este archivo
 
 AZUL = "#2F6BFF"
@@ -37,6 +41,7 @@ QLabel#sub { color: #6B7280; }
 QLabel#etiqueta { color: #6B7280; font-size: 12px; font-weight: 600; }
 QLabel#valor { font-size: 17px; font-weight: 700; }
 QLabel#angulo { font-size: 44px; font-weight: 700; color: #2F6BFF; }
+QLabel#angulo_chico { font-size: 24px; font-weight: 700; color: #2F6BFF; }
 QLabel#chip { background: #DDF6E6; color: #14804A; border-radius: 12px;
               padding: 4px 12px; font-weight: 700; }
 QSlider { background: transparent; min-height: 22px; }
@@ -127,19 +132,64 @@ class Medidor(QWidget):
         p.drawText(QRectF(cx - 35, cy + 12, 70, 20), Qt.AlignCenter, "0°")
 
 
+class BarraEje(QWidget):
+    """Barra horizontal con el centro en 0: izquierda negativo, derecha positivo."""
+
+    def __init__(self, maximo, texto_izq, texto_der):
+        super().__init__()
+        self.maximo = maximo
+        self.valor = 0.0
+        self.zona = ZONA_Y
+        self.izq, self.der = texto_izq, texto_der
+        self.setMinimumHeight(66)
+
+    def set_valor(self, v):
+        self.valor = v
+        self.update()
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w = self.width()
+        margen, y, alto = 20, 12, 14
+        ancho = w - 2 * margen
+        cx = margen + ancho / 2
+        k = (ancho / 2) / self.maximo          # píxeles por grado
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#DCE6F7"))
+        p.drawRoundedRect(QRectF(margen, y, ancho, alto), 7, 7)
+        zd = self.zona * k
+        p.setBrush(QColor("#C4CBD6"))
+        p.drawRect(QRectF(cx - zd, y, 2 * zd, alto))
+        v = max(-self.maximo, min(self.maximo, self.valor))
+        if abs(v) > self.zona:
+            x0 = cx + (zd if v > 0 else -zd)
+            x1 = cx + v * k
+            p.setBrush(QColor(AZUL))
+            p.drawRect(QRectF(min(x0, x1), y, abs(x1 - x0), alto))
+        p.setBrush(QColor("#1F2937"))
+        p.drawEllipse(QPointF(cx + v * k, y + alto / 2), 9, 9)
+        p.setPen(QColor("#6B7280"))
+        p.drawText(QRectF(margen - 10, y + alto + 12, 120, 18), Qt.AlignLeft, self.izq)
+        p.drawText(QRectF(w - margen - 110, y + alto + 12, 120, 18), Qt.AlignRight, self.der)
+        p.drawText(QRectF(cx - 20, y + alto + 12, 40, 18), Qt.AlignCenter, "0°")
+
+
 class Ventana(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Joy-Free Cursor")
         if LOGO.exists():
             self.setWindowIcon(QIcon(str(LOGO)))
-        self.resize(1000, 600)
-        self.setMinimumSize(860, 520)
+        self.resize(1000, 680)
+        self.setMinimumSize(860, 640)
         self.setStyleSheet(ESTILO)
         self.cliente = None          # conexión BLE activa (None si no hay)
         self.conectado_ble = False   # la app ya habla con el ESP32
         self.emparejado = False      # el sistema operativo ya emparejó el mouse
         self.en_config = False
+        self.hombro_ok = False       # el ESP32 detectó el segundo sensor
+        self.ejes_activo = False     # modo de dos ejes encendido
         self._tareas = set()
         self.latido = QTimer(self)   # mientras se configura, avisa al ESP32 cada 1 s
         self.latido.setInterval(1000)
@@ -232,6 +282,25 @@ class Ventana(QWidget):
         tl.addWidget(self.lbl_angulo)
         izq.addWidget(t)
 
+        # hombro (solo visible con los dos sensores activos)
+        self.card_hombro = tarjeta()
+        hl = QVBoxLayout(self.card_hombro)
+        hl.setContentsMargins(16, 12, 16, 8)
+        hl.setSpacing(0)
+        fila_h = QHBoxLayout()
+        et_h = QLabel("ÁNGULO DEL HOMBRO")
+        et_h.setObjectName("etiqueta")
+        self.lbl_angulo_y = QLabel("+0.0°")
+        self.lbl_angulo_y.setObjectName("angulo_chico")
+        fila_h.addWidget(et_h)
+        fila_h.addStretch()
+        fila_h.addWidget(self.lbl_angulo_y)
+        hl.addLayout(fila_h)
+        self.barra_hombro = BarraEje(MAX_Y, "Cursor arriba", "Cursor abajo")
+        hl.addWidget(self.barra_hombro)
+        izq.addWidget(self.card_hombro)
+        self.card_hombro.setVisible(False)
+
         # ajustes
         t2 = tarjeta()
         al = QVBoxLayout(t2)
@@ -277,6 +346,19 @@ class Ventana(QWidget):
         btn.setObjectName("secundario")
         btn.setEnabled(False)
         al.addWidget(btn)
+
+        et3 = QLabel("PRUEBA DE DOS EJES")
+        et3.setObjectName("etiqueta")
+        al.addSpacing(4)
+        al.addWidget(et3)
+        self.btn_ejes = QPushButton("Activar los dos sensores")
+        self.btn_ejes.clicked.connect(self.alternar_ejes)
+        al.addWidget(self.btn_ejes)
+        self.lbl_ejes = QLabel("Suma el hombro como eje vertical. Al encender, arranca solo con el cuello.")
+        self.lbl_ejes.setObjectName("sub")
+        self.lbl_ejes.setWordWrap(True)
+        al.addWidget(self.lbl_ejes)
+        self.poner_ejes(0)
         self.aplicar_modo(enviar=False)
         der.addWidget(t2)
         der.addStretch()
@@ -327,6 +409,7 @@ class Ventana(QWidget):
         if not conectado:
             self.cliente = None
             self.emparejado = False
+            self.poner_ejes(0)
         self.refrescar_pantalla()
 
     def poner_emparejado(self, valor):
@@ -347,6 +430,32 @@ class Ventana(QWidget):
     def actualizar_angulo(self, grados):
         self.medidor.set_valor(grados)
         self.lbl_angulo.setText(f"{grados:+.1f}°")
+
+    def actualizar_angulo_y(self, grados):
+        self.barra_hombro.set_valor(grados)
+        self.lbl_angulo_y.setText(f"{grados:+.1f}°")
+
+    def poner_ejes(self, valor):
+        """valor del ESP32: bit0 = dos ejes activos, bit1 = hombro detectado."""
+        self.hombro_ok = bool(valor & 2)
+        self.ejes_activo = bool(valor & 1)
+        self.card_hombro.setVisible(self.ejes_activo)
+        if not self.ejes_activo:
+            self.actualizar_angulo_y(0.0)
+        self.btn_ejes.setEnabled(self.hombro_ok)
+        if not self.hombro_ok:
+            self.btn_ejes.setText("Sensor del hombro no detectado")
+            self.btn_ejes.setStyleSheet("")
+        elif self.ejes_activo:
+            self.btn_ejes.setText("Volver a solo el cuello")
+            self.btn_ejes.setStyleSheet("background: #F59E0B;")
+        else:
+            self.btn_ejes.setText("Activar los dos sensores")
+            self.btn_ejes.setStyleSheet("")
+
+    def alternar_ejes(self):
+        # el estado real lo confirma el ESP32 por notificación
+        self.enviar(UUID_EJES, 0 if self.ejes_activo else 1, "<B")
 
     def poner_valores(self, zona_decimas, sens_pct):
         """Muestra en los sliders lo que tiene el ESP32 (sin volver a enviarlo)."""
@@ -438,10 +547,14 @@ async def ciclo_ble(ventana):
                 sens = struct.unpack("<H", await c.read_gatt_char(UUID_SENS))[0]
                 ventana.poner_valores(zona, sens)
                 ventana.cliente = c
+                ventana.poner_ejes((await c.read_gatt_char(UUID_EJES))[0])
                 estado = (await c.read_gatt_char(UUID_ESTADO))[0] == 1
                 ventana.poner_emparejado(estado)
                 ventana.mostrar(True)
                 await c.start_notify(UUID_ESTADO, lambda _, d: ventana.poner_emparejado(d[0] == 1))
+                await c.start_notify(UUID_EJES, lambda _, d: ventana.poner_ejes(d[0]))
+                await c.start_notify(UUID_ANGULO_Y,
+                                     lambda _, d: ventana.actualizar_angulo_y(struct.unpack("<h", d)[0] / 100))
                 await c.start_notify(UUID_ANGULO, al_recibir)
                 await desconectado.wait()
         except Exception as e:

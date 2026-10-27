@@ -8,6 +8,8 @@
 #define UUID_SENS     "8f3c0004-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 #define UUID_MODO     "8f3c0005-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 #define UUID_ESTADO   "8f3c0006-5b7a-4e2d-9c1a-0d4f6a2b7e10"
+#define UUID_EJES     "8f3c0007-5b7a-4e2d-9c1a-0d4f6a2b7e10"   // bit0 = dos ejes activos, bit1 = hombro detectado
+#define UUID_ANGULO_Y "8f3c0008-5b7a-4e2d-9c1a-0d4f6a2b7e10"   // angulo del hombro (centesimas de grado)
 
 // ---- Parámetros ajustables ----
 float       zonaMuerta   = 5.0;   // la app puede cambiarla
@@ -18,21 +20,30 @@ const int   SENTIDO    = 1;
 const int   PERIODO_MS = 20;
 const int   PIN_RECENTRAR = 0;
 
+// ---- Eje del hombro (segundo sensor, 0x69, montado vertical) ----
+const float ZONA_MUERTA_Y = 8.0;   // grados
+const float ANGULO_MAX_Y  = 40.0;  // grados para velocidad maxima
+const int   SENTIDO_Y     = 1;     // 1: angulo positivo = cursor ABAJO. Pon -1 si queda al reves
+
 // ---- LED RGB ----
 const int  LED_R = 25;
 const int  LED_G = 26;
 const int  LED_B = 27;
 const bool LED_ANODO_COMUN = false;   // cátodo común
 
-MPU6050 mpu(Wire);
+MPU6050 mpu(Wire);      // cuello (0x68), horizontal
+MPU6050 hombro(Wire);   // hombro (0x69), vertical
 HijelBLEMouse mouse("Joy-Free Cursor", "TEC");
 NimBLECharacteristic* chAngulo = nullptr;
 NimBLECharacteristic* chZona = nullptr;
 NimBLECharacteristic* chSens = nullptr;
 NimBLECharacteristic* chModo = nullptr;
 NimBLECharacteristic* chEstado = nullptr;
+NimBLECharacteristic* chEjes = nullptr;
+NimBLECharacteristic* chAnguloY = nullptr;
 
 float centro = 0, acumulador = 0;
+float acumuladorY = 0;
 unsigned long ultimo = 0;
 int ciclos = 0;
 unsigned long blancoHasta = 0;
@@ -44,6 +55,13 @@ unsigned long ultimoLatido = 0;
 
 // Estado de emparejamiento que se le informa a la app (1 = mouse emparejado)
 bool pareadoAnterior = false;
+
+// Modo de dos ejes. Siempre arranca apagado: solo cuello.
+bool hombroOk = false;               // el sensor 0x69 respondio al arrancar
+bool dosEjes = false;                // eje del hombro activo
+volatile int solicitudEjes = -1;     // la app lo pide por BLE, se aplica en loop()
+float fAx = 0, fAy = 0;              // aceleracion del hombro suavizada
+float hombroAbs = 0, hombroRef = 0;  // angulo actual y angulo de reposo (grados)
 
 class CbZona : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& info) override {
@@ -80,6 +98,14 @@ class CbModo : public NimBLECharacteristicCallbacks {
   }
 };
 
+class CbEjes : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& info) override {
+    if (c->getValue().size() >= 1) {
+      solicitudEjes = (c->getValue().getValue<uint8_t>() & 1) ? 1 : 0;
+    }
+  }
+};
+
 void ledColor(uint8_t r, uint8_t g, uint8_t b) {
   static int pr = -1, pg = -1, pb = -1;
   if (r == pr && g == pg && b == pb) return;
@@ -111,6 +137,30 @@ void actualizarEstado() {
   }
 }
 
+// Informa a la app: bit0 = dos ejes activos, bit1 = hombro detectado
+void publicarEjes() {
+  if (!chEjes) return;
+  uint8_t v = (hombroOk ? 2 : 0) | (dosEjes ? 1 : 0);
+  chEjes->setValue(v);
+  chEjes->notify();
+}
+
+void aplicarEjes(bool on) {
+  if (on && !hombroOk) on = false;
+  if (on && !dosEjes) {                   // al activar, la postura actual queda como reposo
+    hombro.update();
+    fAx = hombro.getAccX();
+    fAy = hombro.getAccY();
+    hombroAbs = atan2(fAx, fAy) * RAD_TO_DEG;
+    hombroRef = hombroAbs;
+    acumuladorY = 0;
+    blancoHasta = millis() + 1000;
+  }
+  dosEjes = on;
+  publicarEjes();
+  Serial.println(dosEjes ? "Dos ejes: ON" : "Dos ejes: OFF (solo cuello)");
+}
+
 void setup() {
   Serial.begin(115200);
   ledcAttach(LED_R, 5000, 8); ledcAttach(LED_G, 5000, 8); ledcAttach(LED_B, 5000, 8);
@@ -122,6 +172,16 @@ void setup() {
   if (mpu.begin() != 0) { Serial.println("MPU6050 no responde."); while (true) delay(100); }
   delay(1000);
   mpu.calcOffsets();
+
+  // Segundo sensor (hombro): si no esta, todo sigue funcionando solo con el cuello
+  hombro.setAddress(0x69);
+  if (hombro.begin() == 0) {
+    hombroOk = true;
+    hombro.calcOffsets(true, false);      // solo giroscopio: va vertical
+    Serial.println("Sensor de hombro (0x69) detectado.");
+  } else {
+    Serial.println("Sensor de hombro NO detectado: solo eje del cuello.");
+  }
 
   mouse.setLogLevel(HIDLogLevel::Normal);
   mouse.begin();
@@ -154,6 +214,14 @@ void setup() {
     uint8_t e0 = 0;
     chEstado->setValue(e0);
 
+    chEjes = svc->createCharacteristic(UUID_EJES, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+    uint8_t j0 = hombroOk ? 2 : 0;
+    chEjes->setValue(j0);
+    chEjes->setCallbacks(new CbEjes());
+
+    chAnguloY = svc->createCharacteristic(UUID_ANGULO_Y, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+    int16_t y0 = 0; chAnguloY->setValue(y0);
+
     bool ok = servidor->start();
     Serial.print("servidor->start(): "); Serial.println(ok ? "OK" : "FALLO");
     NimBLEDevice::getAdvertising()->start();
@@ -175,12 +243,20 @@ void loop() {
     Serial.println("Modo configuracion: OFF (sin latido de la app)");
   }
 
+  if (solicitudEjes >= 0) {
+    aplicarEjes(solicitudEjes == 1);
+    solicitudEjes = -1;
+  }
+
   actualizarLed();
   actualizarEstado();
   mpu.update();
+  if (dosEjes) hombro.update();
 
   if (digitalRead(PIN_RECENTRAR) == LOW) {
-    centro = mpu.getAngleZ(); acumulador = 0; blancoHasta = millis() + 1000; delay(200);
+    centro = mpu.getAngleZ(); acumulador = 0; blancoHasta = millis() + 1000;
+    if (dosEjes) { hombroRef = hombroAbs; acumuladorY = 0; }
+    delay(200);
   }
 
   if (millis() - ultimo < PERIODO_MS) return;
@@ -193,10 +269,32 @@ void loop() {
     dx = (z > 0 ? 1 : -1) * s * VEL_MAX * sensibilidad;
   }
   acumulador += dx; int paso = (int)acumulador; acumulador -= paso;
-  if (mouse.isPaired() && paso != 0) mouse.move(paso, 0);
+
+  // ---- Eje vertical (hombro), solo si el modo de dos ejes esta activo ----
+  float y = 0, dy = 0;
+  if (dosEjes) {
+    fAx += 0.25 * (hombro.getAccX() - fAx);     // filtro suave sobre la aceleracion
+    fAy += 0.25 * (hombro.getAccY() - fAy);
+    hombroAbs = atan2(fAx, fAy) * RAD_TO_DEG;
+    float d = hombroAbs - hombroRef;
+    while (d > 180) d -= 360;                   // evita el salto en +-180
+    while (d < -180) d += 360;
+    y = d * SENTIDO_Y;
+    if (fabs(y) > ZONA_MUERTA_Y) {
+      float sy = constrain((fabs(y) - ZONA_MUERTA_Y) / (ANGULO_MAX_Y - ZONA_MUERTA_Y), 0.0, 1.0);
+      dy = (y > 0 ? 1 : -1) * sy * VEL_MAX * sensibilidad;
+    }
+  }
+  acumuladorY += dy; int pasoY = (int)acumuladorY; acumuladorY -= pasoY;
+
+  if (mouse.isPaired() && (paso != 0 || pasoY != 0)) mouse.move(paso, pasoY);
 
   if (chAngulo && ++ciclos >= 5) {
     ciclos = 0; int16_t centi = (int16_t)(z * 100);
     chAngulo->setValue(centi); chAngulo->notify();
+    if (chAnguloY && dosEjes) {
+      int16_t centiY = (int16_t)(y * 100);
+      chAnguloY->setValue(centiY); chAnguloY->notify();
+    }
   }
 }
