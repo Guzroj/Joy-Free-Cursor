@@ -6,6 +6,7 @@ from pathlib import Path
 
 import qasync
 from bleak import BleakClient
+from benchmarks import MenuBenchmarks
 from PySide6.QtCore import Qt, QPointF, QRectF, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
@@ -194,6 +195,7 @@ class Ventana(QWidget):
         self.en_config = False
         self.hombro_ok = False       # el ESP32 detectó el segundo sensor
         self.ejes_activo = False     # modo de dos ejes encendido
+        self.bench = None
         self.pausado = False         # el cursor está detenido (el Bluetooth sigue)
         self._tareas = set()
         self.latido = QTimer(self)   # mientras se configura, avisa al ESP32 cada 1 s
@@ -276,6 +278,10 @@ class Ventana(QWidget):
         self.btn_detener.setObjectName("secundario")
         self.btn_detener.clicked.connect(self.alternar_pausa)
         der.addWidget(self.btn_detener)
+        self.btn_bench = QPushButton("Benchmarks")
+        self.btn_bench.setStyleSheet("background: #7C3AED; color: white; border: none;")
+        self.btn_bench.clicked.connect(self.abrir_benchmarks)
+        der.addWidget(self.btn_bench)
 
         # medidor
         t = tarjeta()
@@ -506,9 +512,30 @@ class Ventana(QWidget):
         self.t_sens.start()
 
     # ---------- pausa ----------
+    def abrir_benchmarks(self):
+        if self.bench is None:
+            self.bench = MenuBenchmarks(self)
+        self.bench.actualizar_intentos()
+        self.bench.show()
+        self.bench.raise_()
+        self.bench.activateWindow()
+
     def alternar_pausa(self):
-        # el estado real lo confirma el ESP32 por notificación
-        self.enviar(UUID_PAUSA, 0 if self.pausado else 1, "<B")
+        if self.cliente is None:
+            return
+        nuevo = 0 if self.pausado else 1
+        t = asyncio.ensure_future(self._cambiar_pausa(nuevo))
+        self._tareas.add(t)
+        t.add_done_callback(self._tareas.discard)
+
+    async def _cambiar_pausa(self, nuevo):
+        # el botón cambia cuando la escritura se confirma (no depende de la notificación)
+        try:
+            await self.cliente.write_gatt_char(UUID_PAUSA, struct.pack("<B", nuevo), response=True)
+        except Exception as e:
+            print("BLE pausa:", e)
+            return
+        self.poner_pausa(nuevo)
 
     def poner_pausa(self, valor):
         self.pausado = bool(valor)
