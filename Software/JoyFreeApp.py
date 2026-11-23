@@ -20,11 +20,15 @@ UUID_MODO = "8f3c0005-5b7a-4e2d-9c1a-0d4f6a2b7e10"
 UUID_ESTADO = "8f3c0006-5b7a-4e2d-9c1a-0d4f6a2b7e10"   # 1 = mouse emparejado en el sistema
 UUID_EJES = "8f3c0007-5b7a-4e2d-9c1a-0d4f6a2b7e10"     # bit0 = dos ejes activos, bit1 = hombro detectado
 UUID_ANGULO_Y = "8f3c0008-5b7a-4e2d-9c1a-0d4f6a2b7e10" # ángulo del hombro (centésimas de grado)
-DEF_ZONA = 50      # 5.0° (décimas de grado)
+UUID_CENTRAR = "8f3c0009-5b7a-4e2d-9c1a-0d4f6a2b7e10"  # escribir 1 = recentrar
+UUID_ZONA_Y = "8f3c000d-5b7a-4e2d-9c1a-0d4f6a2b7e10"   # zona muerta del hombro (décimas de grado)
+UUID_PAUSA = "8f3c000e-5b7a-4e2d-9c1a-0d4f6a2b7e10"    # 1 = en pausa (el cursor no se mueve)
+DEF_ZONA = 30      # 3.0° (décimas de grado), cuello
+DEF_ZONA_Y = 60    # 6.0° (décimas de grado), hombro
 DEF_SENS = 100     # 100 %
-ANGULO_MAX = 25.0
-ZONA_Y = 8.0       # debe coincidir con ZONA_MUERTA_Y del firmware
-MAX_Y = 40.0       # debe coincidir con ANGULO_MAX_Y del firmware
+ANGULO_MAX = 9.0   # debe coincidir con ANGULO_MAX del firmware (recorrido del cuello: -9° a +9°)
+ZONA_Y = 6.0       # valor inicial; el firmware manda el real al conectar
+MAX_Y = 30.0       # debe coincidir con ANGULO_MAX_Y del firmware
 LOGO = Path(__file__).parent / "logo.png"   # debe estar junto a este archivo
 
 AZUL = "#2F6BFF"
@@ -77,12 +81,12 @@ def tarjeta():
 
 
 class Medidor(QWidget):
-    """Medio círculo: izquierda = -25°, derecha = +25°."""
+    """Medio círculo: izquierda = -9°, derecha = +9°."""
 
     def __init__(self):
         super().__init__()
         self.valor = 0.0
-        self.zona = 5.0
+        self.zona = 3.0
         self.setMinimumSize(380, 210)
 
     def set_valor(self, v):
@@ -190,6 +194,7 @@ class Ventana(QWidget):
         self.en_config = False
         self.hombro_ok = False       # el ESP32 detectó el segundo sensor
         self.ejes_activo = False     # modo de dos ejes encendido
+        self.pausado = False         # el cursor está detenido (el Bluetooth sigue)
         self._tareas = set()
         self.latido = QTimer(self)   # mientras se configura, avisa al ESP32 cada 1 s
         self.latido.setInterval(1000)
@@ -267,6 +272,11 @@ class Ventana(QWidget):
         fila.addWidget(self.dato("BATERÍA", "No disponible", GRIS))
         der.addLayout(fila)
 
+        self.btn_detener = QPushButton("Detener")
+        self.btn_detener.setObjectName("secundario")
+        self.btn_detener.clicked.connect(self.alternar_pausa)
+        der.addWidget(self.btn_detener)
+
         # medidor
         t = tarjeta()
         tl = QVBoxLayout(t)
@@ -319,10 +329,13 @@ class Ventana(QWidget):
         al.addWidget(self.lbl_ayuda)
 
         lay_z, self.sl_zona, self.lbl_zona = self.crear_slider(
-            "Zona muerta", 10, 200, DEF_ZONA, lambda v: f"{v / 10:.1f}°")
+            "Zona cuello", 10, 80, DEF_ZONA, lambda v: f"{v / 10:.1f}°")
+        lay_zy, self.sl_zona_y, self.lbl_zona_y = self.crear_slider(
+            "Zona hombro", 10, 200, DEF_ZONA_Y, lambda v: f"{v / 10:.1f}°")
         lay_s, self.sl_sens, self.lbl_sens = self.crear_slider(
             "Sensibilidad", 20, 300, DEF_SENS, lambda v: f"{v} %")
         al.addLayout(lay_z)
+        al.addLayout(lay_zy)
         al.addLayout(lay_s)
 
         # los cambios se mandan 200 ms después de dejar de mover el slider
@@ -330,11 +343,16 @@ class Ventana(QWidget):
         self.t_zona.setSingleShot(True)
         self.t_zona.setInterval(200)
         self.t_zona.timeout.connect(lambda: self.enviar(UUID_ZONA, self.sl_zona.value()))
+        self.t_zona_y = QTimer(self)
+        self.t_zona_y.setSingleShot(True)
+        self.t_zona_y.setInterval(200)
+        self.t_zona_y.timeout.connect(lambda: self.enviar(UUID_ZONA_Y, self.sl_zona_y.value()))
         self.t_sens = QTimer(self)
         self.t_sens.setSingleShot(True)
         self.t_sens.setInterval(200)
         self.t_sens.timeout.connect(lambda: self.enviar(UUID_SENS, self.sl_sens.value()))
         self.sl_zona.valueChanged.connect(self.zona_cambio)
+        self.sl_zona_y.valueChanged.connect(self.zona_y_cambio)
         self.sl_sens.valueChanged.connect(self.sens_cambio)
 
         self.btn_reset = QPushButton("Restablecer valores")
@@ -342,10 +360,10 @@ class Ventana(QWidget):
         self.btn_reset.clicked.connect(self.restablecer)
         al.addWidget(self.btn_reset)
 
-        btn = QPushButton("Recentrar")
-        btn.setObjectName("secundario")
-        btn.setEnabled(False)
-        al.addWidget(btn)
+        self.btn_centrar = QPushButton("Recentrar")
+        self.btn_centrar.setObjectName("secundario")
+        self.btn_centrar.clicked.connect(self.recentrar)
+        al.addWidget(self.btn_centrar)
 
         et3 = QLabel("PRUEBA DE DOS EJES")
         et3.setObjectName("etiqueta")
@@ -410,6 +428,7 @@ class Ventana(QWidget):
             self.cliente = None
             self.emparejado = False
             self.poner_ejes(0)
+            self.poner_pausa(0)
         self.refrescar_pantalla()
 
     def poner_emparejado(self, valor):
@@ -457,9 +476,12 @@ class Ventana(QWidget):
         # el estado real lo confirma el ESP32 por notificación
         self.enviar(UUID_EJES, 0 if self.ejes_activo else 1, "<B")
 
-    def poner_valores(self, zona_decimas, sens_pct):
+    def poner_valores(self, zona_decimas, sens_pct, zona_y_decimas):
         """Muestra en los sliders lo que tiene el ESP32 (sin volver a enviarlo)."""
+        self.barra_hombro.zona = zona_y_decimas / 10
+        self.barra_hombro.update()
         for sl, lbl, v in ((self.sl_zona, self.lbl_zona, zona_decimas),
+                           (self.sl_zona_y, self.lbl_zona_y, zona_y_decimas),
                            (self.sl_sens, self.lbl_sens, sens_pct)):
             sl.blockSignals(True)
             sl.setValue(v)
@@ -473,16 +495,54 @@ class Ventana(QWidget):
         self.medidor.set_zona(v / 10)
         self.t_zona.start()
 
+    def zona_y_cambio(self, v):
+        self.lbl_zona_y.setText(self.sl_zona_y._formato(v))
+        self.barra_hombro.zona = v / 10
+        self.barra_hombro.update()
+        self.t_zona_y.start()
+
     def sens_cambio(self, v):
         self.lbl_sens.setText(self.sl_sens._formato(v))
         self.t_sens.start()
 
+    # ---------- pausa ----------
+    def alternar_pausa(self):
+        # el estado real lo confirma el ESP32 por notificación
+        self.enviar(UUID_PAUSA, 0 if self.pausado else 1, "<B")
+
+    def poner_pausa(self, valor):
+        self.pausado = bool(valor)
+        if self.pausado:
+            self.btn_detener.setText("Activar")
+            self.btn_detener.setStyleSheet("background: #F59E0B; color: white; border: none;")
+        else:
+            self.btn_detener.setText("Detener")
+            self.btn_detener.setStyleSheet("")
+        self.actualizar_chip()
+
+    def actualizar_chip(self):
+        if self.pausado:
+            self.chip.setText("● En pausa")
+            self.chip.setStyleSheet("background: #FFF1D6; color: #B45309;")
+        elif self.en_config:
+            self.chip.setText("● Configurando")
+            self.chip.setStyleSheet("background: #FFF1D6; color: #B45309;")
+        else:
+            self.chip.setText("● Conectado")
+            self.chip.setStyleSheet("")
+
     def restablecer(self):
         self.t_zona.stop()
+        self.t_zona_y.stop()
         self.t_sens.stop()
-        self.poner_valores(DEF_ZONA, DEF_SENS)
+        self.poner_valores(DEF_ZONA, DEF_SENS, DEF_ZONA_Y)
         self.enviar(UUID_ZONA, DEF_ZONA)
+        self.enviar(UUID_ZONA_Y, DEF_ZONA_Y)
         self.enviar(UUID_SENS, DEF_SENS)
+
+    def recentrar(self):
+        # pone el cero del cuello (y del hombro si hay dos ejes) donde está el usuario ahora
+        self.enviar(UUID_CENTRAR, 1, "<B")
 
     def alternar_config(self):
         self.en_config = not self.en_config
@@ -491,21 +551,19 @@ class Ventana(QWidget):
     def aplicar_modo(self, enviar):
         on = self.en_config
         self.sl_zona.setEnabled(on)
+        self.sl_zona_y.setEnabled(on)
         self.sl_sens.setEnabled(on)
         self.btn_reset.setEnabled(on)
         self.lbl_ayuda.setVisible(not on)
         if on:
             self.btn_config.setText("Salir del modo configuración")
             self.btn_config.setStyleSheet("background: #F59E0B;")
-            self.chip.setText("● Configurando")
-            self.chip.setStyleSheet("background: #FFF1D6; color: #B45309;")
             self.latido.start()
         else:
             self.btn_config.setText("Entrar en modo configuración")
             self.btn_config.setStyleSheet("")
-            self.chip.setText("● Conectado")
-            self.chip.setStyleSheet("")
             self.latido.stop()
+        self.actualizar_chip()
         if enviar:
             self.enviar(UUID_MODO, 1 if on else 0, "<B")
 
@@ -542,17 +600,30 @@ async def ciclo_ble(ventana):
             def al_recibir(_, datos):
                 ventana.actualizar_angulo(struct.unpack("<h", datos)[0] / 100)
 
-            async with BleakClient(DIRECCION, disconnected_callback=al_desconectar) as c:
+            async with BleakClient(DIRECCION, disconnected_callback=al_desconectar,
+                                   winrt=dict(use_cached_services=False)) as c:
                 zona = struct.unpack("<H", await c.read_gatt_char(UUID_ZONA))[0]
                 sens = struct.unpack("<H", await c.read_gatt_char(UUID_SENS))[0]
-                ventana.poner_valores(zona, sens)
+                try:
+                    zona_y = struct.unpack("<H", await c.read_gatt_char(UUID_ZONA_Y))[0]
+                except Exception:      # firmware viejo sin esta característica
+                    zona_y = DEF_ZONA_Y
+                ventana.poner_valores(zona, sens, zona_y)
                 ventana.cliente = c
                 ventana.poner_ejes((await c.read_gatt_char(UUID_EJES))[0])
+                try:
+                    ventana.poner_pausa((await c.read_gatt_char(UUID_PAUSA))[0])
+                except Exception:      # firmware viejo sin pausa
+                    ventana.poner_pausa(0)
                 estado = (await c.read_gatt_char(UUID_ESTADO))[0] == 1
                 ventana.poner_emparejado(estado)
                 ventana.mostrar(True)
                 await c.start_notify(UUID_ESTADO, lambda _, d: ventana.poner_emparejado(d[0] == 1))
                 await c.start_notify(UUID_EJES, lambda _, d: ventana.poner_ejes(d[0]))
+                try:
+                    await c.start_notify(UUID_PAUSA, lambda _, d: ventana.poner_pausa(d[0]))
+                except Exception:
+                    pass
                 await c.start_notify(UUID_ANGULO_Y,
                                      lambda _, d: ventana.actualizar_angulo_y(struct.unpack("<h", d)[0] / 100))
                 await c.start_notify(UUID_ANGULO, al_recibir)
