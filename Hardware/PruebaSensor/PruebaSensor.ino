@@ -37,13 +37,21 @@ const int   SENTIDO_Y     = -1;    // hombro adelante = angulo positivo = cursor
 // ---- Recentrar: mide de nuevo el sesgo del giroscopio con el usuario quieto ----
 const unsigned long MIDE_ESPERA_MS = 300;    // se descarta el primer instante (por si el boton movio el sensor)
 const unsigned long MIDE_MS        = 1000;   // tiempo de medicion
-const float         MIDE_RANGO_MAX = 8.0;    // grados/s: si hubo mas variacion, no estaba quieto y se descarta
+const float         MIDE_RANGO_MAX = 5.0;    // grados/s: si hubo mas variacion, no estaba quieto y se descarta
+const float         MIDE_DERIVA_MAX = 0.6;   // grados/s: si el promedio de la 1a y 2a mitad difiere mas, hubo movimiento lento
+const float         MIDE_FIJO = 0.001;       // grados/s: un sensor vivo siempre tiene ruido; variacion menor = lectura congelada
+
+// ---- Vigilancia del sensor del hombro ----
+const float LIMITE_HOMBRO = 60.0;              // grados: el angulo del hombro no se aleja mas que esto del centro
+const int   HOMBRO_IGUALES_MAX = 150;          // lecturas identicas seguidas (unos 0.3 s) = sensor congelado
+const unsigned long HOMBRO_REVISA_MS = 1000;   // cada cuanto se pregunta si 0x69 responde / se intenta reiniciar
 
 // ---- LED RGB ----
 const int  LED_R = 25;
 const int  LED_G = 26;
 const int  LED_B = 27;
 const bool LED_ANODO_COMUN = false;   // cátodo común
+const uint8_t LED_BRILLO = 30;        // brillo general del LED (0 a 255). Al maximo metia ruido y tumbaba el sensor del hombro
 
 MPU6050 mpu(Wire);      // cuello (0x68), gira sobre el eje X
 MPU6050 hombro(Wire);   // hombro (0x69)
@@ -75,6 +83,8 @@ unsigned long tMide = 0;
 float sumaC = 0, sumaH = 0;
 float minC = 0, maxC = 0, minH = 0, maxH = 0;
 int nMide = 0;
+float sumaC1 = 0, sumaH1 = 0;        // primera mitad de la medicion (para ver si hubo movimiento lento)
+int nMide1 = 0;
 
 // Modo configuración: la app lo activa y manda un "latido" cada 1 s.
 // Si pasan 3 s sin latido (app cerrada o conexión caída), sale solo.
@@ -90,6 +100,11 @@ bool pareadoAnterior = false;
 
 // Modo de dos ejes. Siempre arranca apagado: solo cuello.
 bool hombroOk = false;               // el sensor 0x69 respondio al arrancar
+bool hombroVivo = false;             // el sensor esta entregando datos ahora mismo (se vigila en loop)
+int  hombroIguales = 0;
+float hgxPrev = 0, hgyPrev = 0, hgzPrev = 0;
+unsigned long tRevisaHombro = 0;
+float offHX = 0, offHY = 0, offHZ = 0;   // offsets del giroscopio del hombro calculados al arrancar
 bool dosEjes = false;                // eje del hombro activo
 volatile int solicitudEjes = -1;     // la app lo pide por BLE, se aplica en loop()
 volatile bool solicitudCentrar = false;  // la app pide recentrar por BLE, se aplica en loop()
@@ -167,6 +182,9 @@ void ledColor(uint8_t r, uint8_t g, uint8_t b) {
   static int pr = -1, pg = -1, pb = -1;
   if (r == pr && g == pg && b == pb) return;
   pr = r; pg = g; pb = b;
+  r = (uint16_t)r * LED_BRILLO / 255;   // todos los colores pasan por aqui: se baja el brillo de todo
+  g = (uint16_t)g * LED_BRILLO / 255;
+  b = (uint16_t)b * LED_BRILLO / 255;
   if (LED_ANODO_COMUN) { r = 255 - r; g = 255 - g; b = 255 - b; }
   ledcWrite(LED_R, r); ledcWrite(LED_G, g); ledcWrite(LED_B, b);
 }
@@ -201,7 +219,7 @@ void actualizarEstado() {
 // Informa a la app: bit0 = dos ejes activos, bit1 = hombro detectado
 void publicarEjes() {
   if (!chEjes) return;
-  uint8_t v = (hombroOk ? 2 : 0) | (dosEjes ? 1 : 0);
+  uint8_t v = ((hombroOk && hombroVivo) ? 2 : 0) | (dosEjes ? 1 : 0);
   chEjes->setValue(v);
   chEjes->notify();
 }
@@ -228,24 +246,84 @@ float gyroHombro() {
   return hombro.getGyroZ();
 }
 
+// ---- Vigilancia del hombro: detecta si el sensor deja de entregar datos y lo reinicia ----
+bool hombroResponde() {
+  Wire.beginTransmission(0x69);
+  return Wire.endTransmission() == 0;
+}
+
+void marcarHombroCaido(const char* motivo) {
+  if (!hombroVivo) return;
+  hombroVivo = false;
+  acumuladorY = 0;
+  Serial.printf("HOMBRO CAIDO (%s): se intentara reiniciar\n", motivo);
+  publicarEjes();                       // la app muestra "Sensor del hombro no detectado"
+}
+
+void reiniciarHombro() {
+  if (!hombroResponde()) return;
+  if (hombro.begin() != 0) return;
+  hombro.setGyroOffsets(offHX, offHY, offHZ);   // conserva la calibracion del arranque
+  hombroVivo = true;
+  hombroIguales = 0;
+  centroH = anguloHombro; acumuladorY = 0;      // el hombro vuelve con el centro donde esta
+  Serial.println("Hombro reiniciado: vuelve a funcionar");
+  publicarEjes();
+}
+
+void vigilarHombro() {
+  float gx = hombro.getGyroX(), gy = hombro.getGyroY(), gz = hombro.getGyroZ();
+  if (gx == hgxPrev && gy == hgyPrev && gz == hgzPrev) {
+    if (hombroIguales < 100000) hombroIguales++;
+  } else {
+    hombroIguales = 0;
+  }
+  hgxPrev = gx; hgyPrev = gy; hgzPrev = gz;
+
+  if (hombroVivo && hombroIguales >= HOMBRO_IGUALES_MAX) marcarHombroCaido("lectura congelada");
+
+  if (millis() - tRevisaHombro >= HOMBRO_REVISA_MS) {
+    tRevisaHombro = millis();
+    if (hombroVivo) {
+      if (!hombroResponde()) marcarHombroCaido("0x69 no responde");
+    } else {
+      reiniciarHombro();
+    }
+  }
+}
+
 // Empieza a medir el sesgo con el usuario quieto; al terminar deja el cero donde esta
 void iniciarMedicion() {
   midiendo = true;
   tMide = millis();
   sumaC = 0; sumaH = 0; nMide = 0;
+  sumaC1 = 0; sumaH1 = 0; nMide1 = 0;
   Serial.println("Midiendo sesgo: quedate quieto");
 }
 
+// Promedio de la 1a mitad contra la 2a: si cambia, hubo un movimiento lento que el rango no ve
+bool mitadesIguales(float suma, float suma1) {
+  int n2 = nMide - nMide1;
+  if (nMide1 < 10 || n2 < 10) return false;
+  float m1 = suma1 / nMide1, m2 = (suma - suma1) / n2;
+  return fabs(m1 - m2) < MIDE_DERIVA_MAX;
+}
+
 void terminarMedicion() {
-  bool quietoC = (nMide >= 20) && (maxC - minC < MIDE_RANGO_MAX);
-  bool quietoH = !hombroOk || ((nMide >= 20) && (maxH - minH < MIDE_RANGO_MAX));
+  bool usarHombro = hombroOk && hombroVivo;
+  bool quietoC = (nMide >= 20) && (maxC - minC < MIDE_RANGO_MAX) && mitadesIguales(sumaC, sumaC1);
+  bool fijoH = usarHombro && (nMide >= 20) && (maxH - minH < MIDE_FIJO);
+  if (fijoH) marcarHombroCaido("lectura fija al recentrar");   // no se acepta como sesgo
+  bool quietoH = !usarHombro ||
+                 (!fijoH && (nMide >= 20) && (maxH - minH < MIDE_RANGO_MAX) && mitadesIguales(sumaH, sumaH1));
   if (quietoC) sesgoC = sumaC / nMide;
-  if (quietoH && hombroOk) sesgoH = sumaH / nMide;
-  if (quietoC && quietoH) {
+  if (quietoH && usarHombro && !fijoH) sesgoH = sumaH / nMide;
+  if (quietoC && quietoH && !fijoH) {
     Serial.printf("Sesgo cuello %.2f  hombro %.2f grados/s\n", sesgoC, sesgoH);
   } else {
-    rojoHasta = millis() + 700;       // no estaba quieto: se conserva el sesgo anterior
-    Serial.println("Hubo movimiento al medir: se conserva el sesgo anterior. Repite quieto.");
+    rojoHasta = millis() + 700;       // no estaba quieto (o el hombro no da datos): se conserva el sesgo anterior
+    Serial.printf("Medicion rechazada (cuello %s, hombro %s): se conserva el sesgo anterior. Repite quieto.\n",
+                  quietoC ? "ok" : "se movio", fijoH ? "sin datos" : (quietoH ? "ok" : "se movio"));
   }
   centro = anguloCuello; acumulador = 0;
   centroH = anguloHombro; acumuladorY = 0;
@@ -264,12 +342,13 @@ void actualizarMedicion(float gC, float gH) {
       if (gH > maxH) maxH = gH;
     }
     sumaC += gC; sumaH += gH; nMide++;
+    if (t < MIDE_ESPERA_MS + MIDE_MS / 2) { sumaC1 += gC; sumaH1 += gH; nMide1++; }
   }
   if (t >= MIDE_ESPERA_MS + MIDE_MS) terminarMedicion();
 }
 
 void aplicarEjes(bool on) {
-  if (on && !hombroOk) on = false;
+  if (on && !(hombroOk && hombroVivo)) on = false;
   if (on && !dosEjes) iniciarMedicion();   // al activar, mide el sesgo y la postura actual queda como reposo
   dosEjes = on;
   publicarEjes();
@@ -337,7 +416,9 @@ void setup() {
   hombro.setAddress(0x69);
   if (hombro.begin() == 0) {
     hombroOk = true;
+    hombroVivo = true;
     hombro.calcOffsets(true, false);      // solo giroscopio
+    offHX = hombro.getGyroXoffset(); offHY = hombro.getGyroYoffset(); offHZ = hombro.getGyroZoffset();
     Serial.println("Sensor de hombro (0x69) detectado.");
   } else {
     Serial.println("Sensor de hombro NO detectado: solo eje del cuello.");
@@ -376,7 +457,7 @@ void setup() {
     chEstado->setValue(e0);
 
     chEjes = svc->createCharacteristic(UUID_EJES, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-    uint8_t j0 = hombroOk ? 2 : 0;
+    uint8_t j0 = (hombroOk && hombroVivo) ? 2 : 0;
     chEjes->setValue(j0);
     chEjes->setCallbacks(new CbEjes());
 
@@ -430,7 +511,10 @@ void loop() {
   actualizarLed();
   actualizarEstado();
   mpu.update();
-  if (hombroOk) hombro.update();
+  if (hombroOk) {
+    hombro.update();
+    vigilarHombro();
+  }
 
   // Angulos: se integra el giroscopio (restando el sesgo medido al recentrar).
   // Cuello: giroscopio X (el acelerometro no ve este giro: la gravedad cae sobre X)
@@ -438,9 +522,14 @@ void loop() {
   float dt = (ultimoMicros != 0) ? (ahoraUs - ultimoMicros) / 1000000.0f : 0.0f;
   ultimoMicros = ahoraUs;
   float gC = mpu.getGyroX();
-  float gH = hombroOk ? gyroHombro() : 0.0f;
+  float gH = (hombroOk && hombroVivo) ? gyroHombro() : 0.0f;
   anguloCuello += (gC - sesgoC) * dt;
-  if (hombroOk) anguloHombro += (gH - sesgoH) * dt;
+  if (hombroOk && hombroVivo) {
+    anguloHombro += (gH - sesgoH) * dt;
+    // limite: si el sesgo quedo un poco mal, el angulo no se va lejos y el hombro responde apenas regresa
+    if (anguloHombro - centroH > LIMITE_HOMBRO) anguloHombro = centroH + LIMITE_HOMBRO;
+    if (anguloHombro - centroH < -LIMITE_HOMBRO) anguloHombro = centroH - LIMITE_HOMBRO;
+  }
 
   if (solicitudCentrar) { solicitudCentrar = false; recentrar(); }
   revisarBotones();
@@ -463,7 +552,7 @@ void loop() {
 
   // ---- Eje vertical (hombro), solo si el modo de dos ejes esta activo ----
   float y = 0, dy = 0;
-  if (dosEjes) {
+  if (dosEjes && hombroVivo) {
     y = (anguloHombro - centroH) * SENTIDO_Y;
     if (fabs(y) > zonaMuertaY) {
       float sy = constrain((fabs(y) - zonaMuertaY) / (ANGULO_MAX_Y - zonaMuertaY), 0.0, 1.0);

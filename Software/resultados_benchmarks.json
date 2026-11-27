@@ -1,0 +1,545 @@
+{
+  "version": 1,
+  "corridas": [
+    {
+      "id": 1,
+      "benchmark": "puntos",
+      "usuario": "Federico",
+      "dispositivo": "Joy-Free Cursor",
+      "intento": 1,
+      "fecha_hora": "2026-11-23T16:00:51",
+      "parametros": {
+        "n_puntos": 5,
+        "permanencia_s": 1.5,
+        "radio_px": 38.9,
+        "tiempo_max_objetivo_s": 20.0,
+        "semilla": 2026,
+        "resolucion": [
+          1536,
+          864
+        ]
+      },
+      "resumen": {
+        "duracion_total_s": 64.929,
+        "aciertos": 4,
+        "fallos": 1,
+        "tiempo_medio_por_punto_s": 11.228,
+        "tiempo_medio_llegada_s": 8.752,
+        "velocidad_media_px_s": 80.0,
+        "eficiencia_media": 0.831,
+        "salidas_totales": 2
+      },
+      "objetivos": [
+        {
+          "indice": 1,
+          "destino_px": [
+            276.6,
+            433.7
+          ],
+          "completado": true,
+          "tiempo_total_s": 6.288,
+          "tiempo_llegada_s": 4.784,
+          "salidas": 0,
+          "distancia_recta_px": 525.4,
+          "recorrido_hasta_llegar_px": 487.0,
+          "velocidad_media_px_s": 101.8,
+          "eficiencia_trayectoria": 1.0
+        },
+        {
+          "indice": 2,
+          "destino_px": [
+            783.3,
+            668.4
+          ],
+          "completado": true,
+          "tiempo_total_s": 15.329,
+          "tiempo_llegada_s": 13.825,
+          "salidas": 0,
+          "distancia_recta_px": 581.6,
+          "recorrido_hasta_llegar_px": 1016.9,
+          "velocidad_media_px_s": 73.6,
+          "eficiencia_trayectoria": 0.572
+        },
+        {
+          "indice": 3,
+          "destino_px": [
+            255.3,
+            250.3
+          ],
+          "completado": false,
+          "tiempo_total_s": 20.016,
+          "tiempo_llegada_s": 19.871,
+          "salidas": 0,
+          "distancia_recta_px": 695.0,
+          "recorrido_hasta_llegar_px": 1508.7,
+          "velocidad_media_px_s": 75.9,
+          "eficiencia_trayectoria": 0.461
+        },
+        {
+          "indice": 4,
+          "destino_px": [
+            898.4,
+            469.1
+          ],
+          "completado": true,
+          "tiempo_total_s": 13.599,
+          "tiempo_llegada_s": 12.095,
+          "salidas": 0,
+          "distancia_recta_px": 702.3,
+          "recorrido_hasta_llegar_px": 936.1,
+          "velocidad_media_px_s": 77.4,
+          "eficiencia_trayectoria": 0.75
+        },
+        {
+          "indice": 5,
+          "destino_px": [
+            432.5,
+            507.0
+          ],
+          "completado": true,
+          "tiempo_total_s": 9.697,
+          "tiempo_llegada_s": 4.304,
+          "salidas": 2,
+          "distancia_recta_px": 457.5,
+          "recorrido_hasta_llegar_px": 438.9,
+          "velocidad_media_px_s": 102.0,
+          "eficiencia_trayectoria": 1.0
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "benchmark": "puntos",
+      "usuario": "Federico2",
+      "dispositivo": "Joy-Free Cursor",
+      "intento": 1,
+      "fecha_hora": "2026-11-23T16:05:37",
+      "parametros": {
+        "n_puntos": 5,
+        "permanencia_s": 1.5,
+        "radio_px": 38.9,
+        "tiempo_max_objetivo_s": 20.0,
+        "semilla": 2026,
+        "resolucion": [
+          1536,
+          864
+        ]
+      },
+      "resumen": {
+        "duracion_total_s": 46.014,
+        "aciertos": 5,
+        "fallos": 0,
+        "tiempo_medio_por_punto_s": 9.203,
+        "tiempo_medio_llegada_s": 7.699,
+        "velocidad_media_px_s": 103.4,
+        "eficiencia_media": 0.776,
+        "salidas_totales": 0
+      },
+      "objetivos": [
+        {
+          "indice": 1,
+          "destino_px": [
+            276.6,
+            433.7
+          ],
+          "completado": true,
+          "tiempo_total_s": 7.903,
+          "tiempo_llegada_s": 6.399,
+          "salidas": 0,
+          "distancia_recta_px": 493.6,
+          "recorrido_hasta_llegar_px": 457.0,
+          "velocidad_media_px_s": 71.4,
+          "eficiencia_trayectoria": 1.0
+        },
+        {
+          "indice": 2,
+          "destino_px": [
+            783.3,
+            668.4
+          ],
+          "completado": true,
+          "tiempo_total_s": 9.024,
+          "tiempo_llegada_s": 7.52,
+          "salidas": 0,
+          "distancia_recta_px": 566.6,
+          "recorrido_hasta_llegar_px": 872.4,
+          "velocidad_media_px_s": 116.0,
+          "eficiencia_trayectoria": 0.649
+        },
+        {
+          "indice": 3,
+          "destino_px": [
+            255.3,
+            250.3
+          ],
+          "completado": true,
+          "tiempo_total_s": 14.736,
+          "tiempo_llegada_s": 13.232,
+          "salidas": 0,
+          "distancia_recta_px": 647.9,
+          "recorrido_hasta_llegar_px": 1141.4,
+          "velocidad_media_px_s": 86.3,
+          "eficiencia_trayectoria": 0.568
+        },
+        {
+          "indice": 4,
+          "destino_px": [
+            898.4,
+            469.1
+          ],
+          "completado": true,
+          "tiempo_total_s": 7.744,
+          "tiempo_llegada_s": 6.24,
+          "salidas": 0,
+          "distancia_recta_px": 690.1,
+          "recorrido_hasta_llegar_px": 1037.8,
+          "velocidad_media_px_s": 166.3,
+          "eficiencia_trayectoria": 0.665
+        },
+        {
+          "indice": 5,
+          "destino_px": [
+            432.5,
+            507.0
+          ],
+          "completado": true,
+          "tiempo_total_s": 6.607,
+          "tiempo_llegada_s": 5.104,
+          "salidas": 0,
+          "distancia_recta_px": 493.3,
+          "recorrido_hasta_llegar_px": 473.4,
+          "velocidad_media_px_s": 92.8,
+          "eficiencia_trayectoria": 1.0
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "benchmark": "camara",
+      "usuario": "Federico2",
+      "dispositivo": "Joy-Free Cursor",
+      "intento": 1,
+      "fecha_hora": "2026-11-23T16:06:58",
+      "parametros": {
+        "n_objetivos": 5,
+        "permanencia_s": 1.5,
+        "sensibilidad_grados_por_px": 0.15,
+        "tolerancia_grados": 3.0,
+        "tiempo_max_objetivo_s": 20.0,
+        "semilla": 2026,
+        "campo_yaw_grados": 60.0,
+        "campo_pitch_grados": 25.0
+      },
+      "resumen": {
+        "duracion_total_s": 39.04,
+        "aciertos": 5,
+        "fallos": 0,
+        "tiempo_medio_por_objetivo_s": 7.808,
+        "tiempo_medio_llegada_s": 6.304,
+        "velocidad_media_grados_s": 12.0,
+        "eficiencia_media": 0.756,
+        "error_medio_en_permanencia_grados": 1.35,
+        "salidas_totales": 0
+      },
+      "objetivos": [
+        {
+          "indice": 1,
+          "destino_grados": [
+            -45.7,
+            0.1
+          ],
+          "completado": true,
+          "tiempo_total_s": 3.791,
+          "tiempo_llegada_s": 2.288,
+          "salidas": 0,
+          "distancia_inicial_grados": 45.7,
+          "recorrido_hasta_llegar_grados": 45.8,
+          "velocidad_media_grados_s": 20.0,
+          "eficiencia_trayectoria": 0.999,
+          "error_medio_en_permanencia_grados": 0.7
+        },
+        {
+          "indice": 2,
+          "destino_grados": [
+            1.4,
+            18.0
+          ],
+          "completado": true,
+          "tiempo_total_s": 6.944,
+          "tiempo_llegada_s": 5.441,
+          "salidas": 0,
+          "distancia_inicial_grados": 50.3,
+          "recorrido_hasta_llegar_grados": 78.2,
+          "velocidad_media_grados_s": 14.4,
+          "eficiencia_trayectoria": 0.643,
+          "error_medio_en_permanencia_grados": 1.54
+        },
+        {
+          "indice": 3,
+          "destino_grados": [
+            -47.7,
+            -13.8
+          ],
+          "completado": true,
+          "tiempo_total_s": 11.68,
+          "tiempo_llegada_s": 10.176,
+          "salidas": 0,
+          "distancia_inicial_grados": 59.4,
+          "recorrido_hasta_llegar_grados": 97.4,
+          "velocidad_media_grados_s": 9.6,
+          "eficiencia_trayectoria": 0.61,
+          "error_medio_en_permanencia_grados": 1.7
+        },
+        {
+          "indice": 4,
+          "destino_grados": [
+            12.1,
+            2.8
+          ],
+          "completado": true,
+          "tiempo_total_s": 9.952,
+          "tiempo_llegada_s": 8.448,
+          "salidas": 0,
+          "distancia_inicial_grados": 60.4,
+          "recorrido_hasta_llegar_grados": 114.1,
+          "velocidad_media_grados_s": 13.5,
+          "eficiencia_trayectoria": 0.529,
+          "error_medio_en_permanencia_grados": 1.5
+        },
+        {
+          "indice": 5,
+          "destino_grados": [
+            -31.2,
+            5.7
+          ],
+          "completado": true,
+          "tiempo_total_s": 6.672,
+          "tiempo_llegada_s": 5.169,
+          "salidas": 0,
+          "distancia_inicial_grados": 43.8,
+          "recorrido_hasta_llegar_grados": 41.8,
+          "velocidad_media_grados_s": 8.1,
+          "eficiencia_trayectoria": 1.0,
+          "error_medio_en_permanencia_grados": 1.33
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "benchmark": "puntos",
+      "usuario": "FERNANDO",
+      "dispositivo": "Joy-Free Cursor",
+      "intento": 1,
+      "fecha_hora": "2026-11-24T14:25:40",
+      "parametros": {
+        "n_puntos": 5,
+        "permanencia_s": 1.5,
+        "radio_px": 38.9,
+        "tiempo_max_objetivo_s": 20.0,
+        "semilla": 2026,
+        "resolucion": [
+          1536,
+          864
+        ]
+      },
+      "resumen": {
+        "duracion_total_s": 57.215,
+        "aciertos": 4,
+        "fallos": 1,
+        "tiempo_medio_por_punto_s": 9.3,
+        "tiempo_medio_llegada_s": 7.795,
+        "velocidad_media_px_s": 91.5,
+        "eficiencia_media": 0.805,
+        "salidas_totales": 0
+      },
+      "objetivos": [
+        {
+          "indice": 1,
+          "destino_px": [
+            276.6,
+            433.7
+          ],
+          "completado": true,
+          "tiempo_total_s": 5.825,
+          "tiempo_llegada_s": 4.319,
+          "salidas": 0,
+          "distancia_recta_px": 493.4,
+          "recorrido_hasta_llegar_px": 456.0,
+          "velocidad_media_px_s": 105.6,
+          "eficiencia_trayectoria": 1.0
+        },
+        {
+          "indice": 2,
+          "destino_px": [
+            783.3,
+            668.4
+          ],
+          "completado": true,
+          "tiempo_total_s": 12.558,
+          "tiempo_llegada_s": 11.054,
+          "salidas": 0,
+          "distancia_recta_px": 558.0,
+          "recorrido_hasta_llegar_px": 814.1,
+          "velocidad_media_px_s": 73.6,
+          "eficiencia_trayectoria": 0.685
+        },
+        {
+          "indice": 3,
+          "destino_px": [
+            255.3,
+            250.3
+          ],
+          "completado": false,
+          "tiempo_total_s": 20.016,
+          "tiempo_llegada_s": null,
+          "salidas": 0,
+          "distancia_recta_px": 698.2,
+          "recorrido_hasta_llegar_px": null,
+          "velocidad_media_px_s": null,
+          "eficiencia_trayectoria": null
+        },
+        {
+          "indice": 4,
+          "destino_px": [
+            898.4,
+            469.1
+          ],
+          "completado": true,
+          "tiempo_total_s": 11.136,
+          "tiempo_llegada_s": 9.632,
+          "salidas": 0,
+          "distancia_recta_px": 753.9,
+          "recorrido_hasta_llegar_px": 889.9,
+          "velocidad_media_px_s": 92.4,
+          "eficiencia_trayectoria": 0.847
+        },
+        {
+          "indice": 5,
+          "destino_px": [
+            432.5,
+            507.0
+          ],
+          "completado": true,
+          "tiempo_total_s": 7.68,
+          "tiempo_llegada_s": 6.176,
+          "salidas": 0,
+          "distancia_recta_px": 479.0,
+          "recorrido_hasta_llegar_px": 693.7,
+          "velocidad_media_px_s": 112.3,
+          "eficiencia_trayectoria": 0.69
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "benchmark": "camara",
+      "usuario": "FERNANDO",
+      "dispositivo": "Joy-Free Cursor",
+      "intento": 1,
+      "fecha_hora": "2026-11-24T14:28:06",
+      "parametros": {
+        "n_objetivos": 5,
+        "permanencia_s": 1.5,
+        "sensibilidad_grados_por_px": 0.15,
+        "tolerancia_grados": 3.0,
+        "tiempo_max_objetivo_s": 20.0,
+        "semilla": 2026,
+        "campo_yaw_grados": 60.0,
+        "campo_pitch_grados": 25.0
+      },
+      "resumen": {
+        "duracion_total_s": 63.634,
+        "aciertos": 5,
+        "fallos": 0,
+        "tiempo_medio_por_objetivo_s": 12.727,
+        "tiempo_medio_llegada_s": 8.08,
+        "velocidad_media_grados_s": 9.5,
+        "eficiencia_media": 0.753,
+        "error_medio_en_permanencia_grados": 1.73,
+        "salidas_totales": 5
+      },
+      "objetivos": [
+        {
+          "indice": 1,
+          "destino_grados": [
+            -45.7,
+            0.1
+          ],
+          "completado": true,
+          "tiempo_total_s": 5.888,
+          "tiempo_llegada_s": 4.384,
+          "salidas": 0,
+          "distancia_inicial_grados": 45.7,
+          "recorrido_hasta_llegar_grados": 42.9,
+          "velocidad_media_grados_s": 9.8,
+          "eficiencia_trayectoria": 1.0,
+          "error_medio_en_permanencia_grados": 1.68
+        },
+        {
+          "indice": 2,
+          "destino_grados": [
+            1.4,
+            18.0
+          ],
+          "completado": true,
+          "tiempo_total_s": 19.92,
+          "tiempo_llegada_s": 8.511,
+          "salidas": 2,
+          "distancia_inicial_grados": 51.4,
+          "recorrido_hasta_llegar_grados": 102.2,
+          "velocidad_media_grados_s": 12.0,
+          "eficiencia_trayectoria": 0.503,
+          "error_medio_en_permanencia_grados": 2.68
+        },
+        {
+          "indice": 3,
+          "destino_grados": [
+            -47.7,
+            -13.8
+          ],
+          "completado": true,
+          "tiempo_total_s": 18.992,
+          "tiempo_llegada_s": 16.128,
+          "salidas": 1,
+          "distancia_inicial_grados": 60.4,
+          "recorrido_hasta_llegar_grados": 120.8,
+          "velocidad_media_grados_s": 7.5,
+          "eficiencia_trayectoria": 0.5,
+          "error_medio_en_permanencia_grados": 0.99
+        },
+        {
+          "indice": 4,
+          "destino_grados": [
+            12.1,
+            2.8
+          ],
+          "completado": true,
+          "tiempo_total_s": 6.704,
+          "tiempo_llegada_s": 5.2,
+          "salidas": 0,
+          "distancia_inicial_grados": 60.9,
+          "recorrido_hasta_llegar_grados": 74.3,
+          "velocidad_media_grados_s": 14.3,
+          "eficiencia_trayectoria": 0.82,
+          "error_medio_en_permanencia_grados": 1.92
+        },
+        {
+          "indice": 5,
+          "destino_grados": [
+            -31.2,
+            5.7
+          ],
+          "completado": true,
+          "tiempo_total_s": 12.131,
+          "tiempo_llegada_s": 6.176,
+          "salidas": 2,
+          "distancia_inicial_grados": 42.3,
+          "recorrido_hasta_llegar_grados": 44.8,
+          "velocidad_media_grados_s": 7.3,
+          "eficiencia_trayectoria": 0.943,
+          "error_medio_en_permanencia_grados": 1.36
+        }
+      ]
+    }
+  ]
+}
